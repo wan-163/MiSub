@@ -174,7 +174,32 @@ export async function generateCombinedNodeList(context, config, userAgent, misub
         }
     }).join('\n');
 
-    const httpSubs = misubs.filter(sub => sub.url.toLowerCase().startsWith('http'));
+    // 分离直连订阅和普通订阅
+    const allHttpSubs = misubs.filter(sub => sub.url.toLowerCase().startsWith('http'));
+    const directConnectSubs = allHttpSubs.filter(sub => sub.directConnect === true);
+    const httpSubs = allHttpSubs.filter(sub => sub.directConnect !== true);
+
+    // 将直连订阅信息存入 context 供 main-handler 使用
+    if (context && directConnectSubs.length > 0) {
+        // 解析直连订阅的规则，转换为 subconverter 格式
+        context.directConnectInfo = directConnectSubs.map(sub => {
+            const rules = parseRulesForSubconverter(sub.exclude);
+            return {
+                url: sub.url,
+                name: sub.name,
+                excludePattern: rules.excludePattern,  // 排除规则（正则）
+                includePattern: rules.includePattern   // 保留规则（正则）
+            };
+        });
+
+        // 向后兼容：保留 directConnectUrls
+        context.directConnectUrls = directConnectSubs.map(s => s.url);
+
+        if (debug) {
+            console.debug(`[DEBUG] Direct connect subscriptions: ${directConnectSubs.length}`, context.directConnectInfo);
+        }
+    }
+
     const limiter = createConcurrencyLimiter(FETCH_CONFIG.CONCURRENCY);
 
     /**
@@ -428,6 +453,70 @@ function applyManualNodeName(nodeUrl, customName) {
 }
 
 
+
+/**
+ * 将 MiSub 规则格式转换为 subconverter 的 include/exclude 参数格式
+ * @param {string} ruleText - MiSub 规则文本
+ * @returns {Object} - { excludePattern, includePattern }
+ */
+function parseRulesForSubconverter(ruleText) {
+    if (!ruleText || ruleText.trim() === '') {
+        return { excludePattern: null, includePattern: null };
+    }
+
+    const lines = ruleText
+        .split('\n')
+        .map(r => r.trim())
+        .filter(Boolean);
+
+    if (lines.length === 0) {
+        return { excludePattern: null, includePattern: null };
+    }
+
+    // 规则分割：--- 为分隔，keep: 为白名单
+    const dividerIndex = lines.findIndex(line => line === '---');
+    const hasDivider = dividerIndex !== -1;
+
+    const excludeLines = hasDivider
+        ? lines.slice(0, dividerIndex)
+        : lines.filter(line => !line.toLowerCase().startsWith('keep:'));
+
+    const keepLines = hasDivider
+        ? lines.slice(dividerIndex + 1)
+        : lines.filter(line => line.toLowerCase().startsWith('keep:'));
+
+    // 提取排除规则的关键字模式（忽略 proto: 规则，校验正则合法性）
+    const excludePatterns = [];
+    for (const line of excludeLines) {
+        if (line.toLowerCase().startsWith('proto:')) continue;
+        try {
+            new RegExp(line); // 尝试编译正则，若失败则抛出异常
+            excludePatterns.push(line);
+        } catch (e) {
+            console.warn(`[DirectConnect] Invalid exclude pattern ignored: ${line}`);
+        }
+    }
+
+    // 提取保留规则的关键字模式
+    const includePatterns = [];
+    for (let line of keepLines) {
+        if (line.toLowerCase().startsWith('keep:')) {
+            line = line.substring('keep:'.length).trim();
+        }
+        if (!line || line.toLowerCase().startsWith('proto:')) continue;
+        try {
+            new RegExp(line); // 尝试编译正则
+            includePatterns.push(line);
+        } catch (e) {
+            console.warn(`[DirectConnect] Invalid include pattern ignored: ${line}`);
+        }
+    }
+
+    return {
+        excludePattern: excludePatterns.length > 0 ? excludePatterns.join('|') : null,
+        includePattern: includePatterns.length > 0 ? includePatterns.join('|') : null
+    };
+}
 
 /**
  * 应用过滤规则

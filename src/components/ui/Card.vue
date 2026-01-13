@@ -97,6 +97,13 @@ const expiryInfo = computed(() => {
           <div class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0" :class="protocolStyle.style">
             {{ protocolStyle.text }}
           </div>
+          <!-- 直连模式标签 -->
+          <div v-if="misub.directConnect" class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 shrink-0 flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            直连
+          </div>
         </div>
         <p class="font-bold text-lg text-gray-800 dark:text-gray-100 truncate" :title="misub.name || '未命名订阅'">
           {{ misub.name || '未命名订阅' }}

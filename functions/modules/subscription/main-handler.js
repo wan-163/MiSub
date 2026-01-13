@@ -380,7 +380,39 @@ export async function handleMisubRequest(context) {
             triedEndpoints.push(subconverterUrl.origin + subconverterUrl.pathname);
             try {
                 subconverterUrl.searchParams.set('target', targetFormat);
-                subconverterUrl.searchParams.set('url', callbackUrl);
+
+                // 构建 URL 参数：合并回调 URL 和直连订阅 URL
+                const allUrls = [callbackUrl];
+                if (context.directConnectUrls && context.directConnectUrls.length > 0) {
+                    allUrls.push(...context.directConnectUrls);
+                }
+                subconverterUrl.searchParams.set('url', allUrls.join('|'));
+
+                // 合并直连订阅的排除/保留规则
+                if (context.directConnectInfo && context.directConnectInfo.length > 0) {
+                    const allExcludePatterns = [];
+                    const allIncludePatterns = [];
+
+                    for (const info of context.directConnectInfo) {
+                        if (info.excludePattern) {
+                            allExcludePatterns.push(info.excludePattern);
+                        }
+                        if (info.includePattern) {
+                            allIncludePatterns.push(info.includePattern);
+                        }
+                    }
+
+                    // 设置 subconverter 的 exclude 参数
+                    if (allExcludePatterns.length > 0) {
+                        subconverterUrl.searchParams.set('exclude', allExcludePatterns.join('|'));
+                    }
+
+                    // 设置 subconverter 的 include 参数
+                    if (allIncludePatterns.length > 0) {
+                        subconverterUrl.searchParams.set('include', allIncludePatterns.join('|'));
+                    }
+                }
+
                 subconverterUrl.searchParams.set('scv', 'true');
                 subconverterUrl.searchParams.set('udp', 'true');
                 subconverterUrl.searchParams.set('emoji', shouldUseEmoji ? 'true' : 'false');  // 根据模板动态设置 emoji 参数
